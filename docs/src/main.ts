@@ -8,11 +8,11 @@ import "../assets/main.css"
 const routes: RouteRecordRaw[] = [
   { path: "/", component: PageHome },
   { path: "/lists", component: () => import("./pages/PageList.vue") },
-  { path: "/tests", component: () => import("./pages/PageTests.vue") },
-  {
-    path: "/tests-keep-alive",
-    component: () => import("./pages/PageTestKeepAlive.vue"),
-  },
+  // { path: "/tests", component: () => import("./pages/PageTests.vue") },
+  // {
+  //   path: "/tests-keep-alive",
+  //   component: () => import("./pages/PageTestKeepAlive.vue"),
+  // },
   {
     path: "/:catchAll(.*)",
     redirect: "/",

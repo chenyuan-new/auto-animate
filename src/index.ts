@@ -1,3 +1,11 @@
+/*
+本质上的实现方式是先把元素加入进来，然后利用mutationobserver根据height、width之类的变化播放动画，重放一遍有动画效果的样式，从而实现了动画效果
+
+使用dom原生的animate api实现的动画效果
+
+利用mutationobserver来进行dom的监听，并触发对应的动画
+*/
+
 /**
  * Absolute coordinate positions adjusted for scroll.
  */
@@ -173,7 +181,7 @@ function updatePos(el: Element) {
     el,
     setTimeout(async () => {
       const currentAnimation = animations.get(el)
-
+      // note:动画结束后再coords里更新坐标值
       try {
         await currentAnimation?.finished
 
@@ -191,6 +199,7 @@ function updatePos(el: Element) {
  */
 function updateAllPos() {
   clearTimeout(debounces.get(root))
+  // note:每100ms更新一下全体的坐标
   debounces.set(
     root,
     setTimeout(() => {
@@ -266,7 +275,10 @@ if (supportedBrowser) {
  * @returns
  */
 function getElements(mutations: MutationRecord[]): Set<Element> | false {
+  // note: 为了方便后面every进行提前退出操作？？？
   const observedNodes = mutations.reduce((nodes: Node[], mutation) => {
+    // note: 记录新增和移除的node
+    // https://developer.mozilla.org/en-US/docs/Web/API/MutationRecord
     return [
       ...nodes,
       ...Array.from(mutation.addedNodes),
@@ -336,8 +348,11 @@ function target(el: Element, child?: Element) {
  * @param el - The specific element to animate.
  */
 function animate(el: Element) {
+  // note: node被创建后是否挂载到document上 appendChild这种
+  // https://developer.mozilla.org/en-US/docs/Web/API/Node/isConnected
   const isMounted = el.isConnected
   const preExisting = coords.has(el)
+  // note: 这两段应该是为了cleanup
   if (isMounted && siblings.has(el)) siblings.delete(el)
   if (animations.has(el)) {
     animations.get(el)?.cancel()
@@ -413,7 +428,8 @@ export function getTransitionSizes(
   let heightTo = newCoords.height
   const styles = getComputedStyle(el)
   const sizing = styles.getPropertyValue("box-sizing")
-
+  // note: 为啥这个要特殊处理呢？需要自行验证下
+  // 猜测是因为 getBoundingClientRect 包含了padding和border，导致获取到的width与height并不是设置的width和height
   if (sizing === "content-box") {
     const paddingY =
       raw(styles.paddingTop) +
@@ -565,6 +581,8 @@ function add(el: Element) {
   if (!isEnabled(el)) return
   let animation: Animation
   if (typeof pluginOrOptions !== "function") {
+    // note:使用animate api进行动画效果展示
+    // https://developer.mozilla.org/en-US/docs/Web/API/Element/animate
     animation = el.animate(
       [
         { transform: "scale(.98)", opacity: 0 },
@@ -596,6 +614,7 @@ function cleanUp(el: Element, styles?: Partial<CSSStyleDeclaration>) {
   siblings.delete(el)
   animations.delete(el)
   intersections.get(el)?.disconnect()
+  // note: 为啥要setTimeout 并且重新设置NEW？
   setTimeout(() => {
     if (DEL in el) delete el[DEL]
     Object.defineProperty(el, NEW, { value: true, configurable: true })
@@ -615,10 +634,11 @@ function remove(el: Element) {
   if (!siblings.has(el) || !coords.has(el)) return
 
   const [prev, next] = siblings.get(el)!
+  // note: 为啥用defineProperty呢 writable默认是啥？ configurable作用是啥
   Object.defineProperty(el, DEL, { value: true, configurable: true })
   const finalX = window.scrollX
   const finalY = window.scrollY
-
+  // note：先把移除的元素插回去？然后再消失？
   if (next && next.parentNode && next.parentNode instanceof Element) {
     next.parentNode.insertBefore(el, next)
   } else if (prev && prev.parentNode) {
@@ -636,6 +656,7 @@ function remove(el: Element) {
   }
 
   let animation: Animation
+  // 用remove前的width等和绝对布局一起，处理慢慢消失的效果
   let styleReset: Partial<CSSStyleDeclaration> = {
     position: "absolute",
     top: `${top}px`,
@@ -710,6 +731,7 @@ function adjustScroll(
   const parent = el.parentElement
   let lastHeight = parent.clientHeight
   let lastWidth = parent.clientWidth
+  // note:使用rAF让父元素高度下降看起来自然一点
   const startScroll = performance.now()
   // Here we use a manual scroll animation to keep the element using the same
   // easing and timing as the parent’s scroll animation.
@@ -746,6 +768,7 @@ function deletePosition(
   const oldCoords = coords.get(el)!
   const [width, , height] = getTransitionSizes(el, oldCoords, getCoords(el))
 
+  // note: position动画只针对最近的一个非static的父元素生效
   let offsetParent: Element | null = el.parentElement
   while (
     offsetParent &&
@@ -817,6 +840,7 @@ export default function autoAnimate(
   config: Partial<AutoAnimateOptions> | AutoAnimationPlugin = {}
 ): AnimationController {
   if (mutations && resize) {
+    // note: 为了无障碍，有人对动画有感应，对此需要把动画禁用
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
     const isDisabledDueToReduceMotion =
       mediaQuery.matches &&
